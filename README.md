@@ -9,6 +9,7 @@ An opensource tool to measure and tune bandoneons (and accordions).
 - scipy
 - bokeh
 - pyaudio
+- peakutils 
 
 # Run
 bokeh serve streamer.py
