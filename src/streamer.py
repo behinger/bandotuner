@@ -16,7 +16,7 @@ import numpy as np
 np.random.seed(1)
 
 from bokeh.layouts import row, column, gridplot,widgetbox
-from bokeh.models import ColumnDataSource, Slider, Select, Button,LabelSet
+from bokeh.models import ColumnDataSource, Slider, Select, Button,LabelSet,CheckboxButtonGroup
 
 from bokeh.plotting import curdoc, figure,output_file, show
 from bokeh.driving import count
@@ -76,6 +76,8 @@ def update():
         
         # at what frequencies are the FFTs? 
         # TODO: possible bug here -frequencies shifted by 1?
+        if data is None:
+            return
         freqs = (np.array(range(data.shape[0]))+1) / streamer.T
 
         # Let's remove frequencies lower than 100
@@ -200,13 +202,34 @@ concertpitch_slider = Slider(value=converter.concertpitch,start=425, end=445, st
 concertpitch_slider.on_change('value',changeConcertPitch)
 
 
+# This checkbutton allows to 
+
+
+output_file("checkbox_button_group.html")
+
+
+cb_autoupdate = None
+def autoupdate(attr,old,new):
+    print(attr,old,new)
+    if new:
+        print('starting autoupdate')
+        cb_autoupdate = curdoc().add_periodic_callback(detect_base_freq,500)
+    else:
+        print('removing autoupdate')
+        curdoc().remove_periodic_callback(cb_autoupdate)
+        
+checkbox_button_group = CheckboxButtonGroup(
+        labels=["Autodetect"], active=[0, 1])
+checkbox_button_group.on_change('active',autoupdate)
+
+
 # This button allows to lock in the current data
 detect_button = Button()
 detect_button.on_change('clicks',detect_base_freq)
 
 #%%
 # make the grid & add the plots
-curdoc().add_root(gridplot([p,widgetbox(length_slider,concertpitch_slider,detect_button,width=400)],[p_time,None],[p_f1,p_f2]))
+curdoc().add_root(gridplot([p,widgetbox(length_slider,concertpitch_slider,detect_button,checkbox_button_group,width=400)],[p_time,None],[p_f1,p_f2]))
 # update every 100ms
 curdoc().add_periodic_callback(update, 100)
 curdoc().title = "Bandoneon Tuner"

@@ -26,10 +26,17 @@ class hz_to_scale:
         return self.concertpitch * 2.0**((n-69)/12.0)
     
     def number_to_name(self,n): 
-        perfect_n = int(round(n))
-        return NOTE_NAMES[perfect_n % 12] +  str(round(perfect_n/12 - 1)) + ':'+ str(self.number_cent_difference(perfect_n,n))
+        return self.get_base(n) + str(self.get_octave(n))+ ':'+ str(self.number_cent_difference(n))
     
-    def number_cent_difference(self,ref,actual):
+    def get_base(self,n):
+        n = int(round(n))
+        return(NOTE_NAMES[n % 12])
+    def get_octave(self,n):
+        n = int(round(n))
+        return(int(round(n/12 - 1)))
+    def number_cent_difference(self,actual,ref=None):
+        if ref is None:
+            ref = int(round(actual))
         #print(ref,actual)
         ref = self.number_to_freq(ref)
         actual = self.number_to_freq(actual)

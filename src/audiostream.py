@@ -16,15 +16,15 @@ from scipy.signal.windows import hann
 
 # Object to get the audiostream + do the FFT
 class AudioStream(object):
-    def __init__(self,rate=8192):
+    def __init__(self,rate=8192,T=4):
         # stream constants
         self.RATE = rate
         self.CHUNK = int(self.RATE/10) # 4 times per second
         self.FORMAT = pyaudio.paFloat32
         self.CHANNELS = 1
-        
         self.pause = False
-        self.T =4 # 
+        self.T =T # 
+        
         self.init_buff()
         # stream object
         self.p = pyaudio.PyAudio()
@@ -55,12 +55,12 @@ class AudioStream(object):
     def calc_fft(self):
         data = np.array(self.buff)
         if data.shape[0]!= self.buffsize:
-            print('no sample')
+            print('loading samples %i%%'%(data.shape[0]/self.buffsize*100))
             return(None)
         data = np.multiply(data,self.fftwindow)
         yf = fft(data)
         yf = yf[1:int(yf.shape[0]/2)]
         fftdata =   np.abs(yf)
-        
+
         return(fftdata)
 
