@@ -4,11 +4,12 @@ An opensource tool to measure and tune bandoneons (and accordions).
 # Requirements
 
 - pandas
-- numpy
+- numpy>=1.13
 - numpy-ringbuffer
 - scipy
 - bokeh
 - pyaudio
+- peakutils 
 
 # Run
 bokeh serve streamer.py
