@@ -1,0 +1,7 @@
+pandas
+numpy
+numpy-ringbuffer
+scipy
+bokeh
+pyaudio
+peakutils
