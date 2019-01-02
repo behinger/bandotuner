@@ -8,7 +8,7 @@ An opensource tool to measure and tune bandoneons (and accordions).
 - numpy-ringbuffer
 - scipy
 - bokeh
-- pyaudio
+- sounddevice
 - peakutils 
 
 # Run
@@ -20,8 +20,7 @@ go to: http://localhost:5006/streamer
 
 
 # Build Pyinstaller
-I had to remove the pyqt4 hook from "C:\Anaconda3\Lib\site-packages\PyInstaller\loader\rthooks.dat"
-
-'''
-pyinstaller --hidden-import=scipy._lib.messagestream --hidden-import=pandas._libs.tslibs.np_datetime --hidden-import=pandas._libs.tslibs.nattype --hidden-import=pandas._libs.tslibs.timedeltas --hidden-import=pandas._libs.skiplist start_bandotuner.py
-'''
+Currently I need to put the libportaudio32bit.dll (or 64bit) in the folder 
+```
+pyinstaller start_bandotuner.py --hidden-import sounddevice --log-level=DEBUG -y --add-binary libportaudio32bit.dll;_sounddevice_data/portaudio-binaries/.
+```

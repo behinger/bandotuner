@@ -1,6 +1,6 @@
 # This script starts the bokeh server
 import streamer_v2 # so that pyinstaller finds it
-from bokeh.commands.subcommands.serve import Serve
+from bokeh.command.subcommands.serve import Serve
 import argparse
 
     

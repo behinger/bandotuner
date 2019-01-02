@@ -32,8 +32,8 @@ class hz_to_scale:
         n = int(round(n))
         return(NOTE_NAMES[n % 12])
     def get_octave(self,n):
-        n = int(round(n))
-        return(int(round(n/12 - 1)))
+        n = int(np.round(n))
+        return(int(np.floor(n/12-1)))
     def number_cent_difference(self,actual,ref=None):
         if ref is None:
             ref = int(round(actual))
@@ -51,3 +51,11 @@ class hz_to_scale:
     def freq_to_name(self,f):
         n = self.freq_to_number(f)
         return(self.number_to_name(n))
+    def name_to_number(self,name):
+        #G4
+        basen = NOTE_NAMES.index(name[:-1])
+        n = basen + 12*(1+int(name[-1]))
+        return(n)
+    def name_to_freq(self,name):
+        n = self.name_to_number(name)
+        return(self.number_to_freq(n))
