@@ -12,7 +12,8 @@ An opensource tool to measure and tune bandoneons (and accordions).
 - peakutils 
 
 # Run
-bokeh serve streamer.py
+bokeh serve streamer_v2.py
+
 
 go to: http://localhost:5006/streamer
 
@@ -21,6 +22,13 @@ go to: http://localhost:5006/streamer
 
 # Build Pyinstaller
 Currently I need to put the libportaudio32bit.dll (or 64bit) in the folder 
+Also the download.js to download the table needs to be bundled. I added everything to the start_bandotuner.spec
+
+To binarize:
+pyinstaller start_bandotuner.spec
+
+
+This I used to initialize the start_bandotuner.spec file
 ```
 pyinstaller start_bandotuner.py --hidden-import sounddevice --log-level=DEBUG -y --add-binary libportaudio32bit.dll;_sounddevice_data/portaudio-binaries/.
 ```
