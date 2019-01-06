@@ -26,17 +26,17 @@ class hz_to_scale:
         return self.concertpitch * 2.0**((n-69)/12.0)
     
     def number_to_name(self,n): 
-        return self.get_base(n) + str(self.get_octave(n))+ ':'+ str(self.number_cent_difference(n))
+        return  np.char.array(self.get_base(n)) +  np.char.array(self.get_octave(n).astype(str))+ ':'+ np.char.array(self.number_cent_difference(n).astype(str))
     
     def get_base(self,n):
-        n = int(round(n))
-        return(NOTE_NAMES[n % 12])
+        n = np.round(n).astype(int)
+        return(np.array(NOTE_NAMES)[n % 12])
     def get_octave(self,n):
-        n = int(np.round(n))
-        return(int(np.floor(n/12-1)))
+        n = np.round(n)
+        return(np.floor(n/12-1).astype(int))
     def number_cent_difference(self,actual,ref=None):
         if ref is None:
-            ref = int(round(actual))
+            ref = np.round(actual)
         #print(ref,actual)
         ref = self.number_to_freq(ref)
         actual = self.number_to_freq(actual)
@@ -46,16 +46,21 @@ class hz_to_scale:
     def freq_cent_difference(self,ref,actual):
         centfromA_ref = 1200*np.log2(ref/self.concertpitch)
         centfromA_actual = 1200*np.log2(actual/self.concertpitch)
-        return(-int(round(centfromA_ref - centfromA_actual)))
+        return(-np.round(centfromA_ref - centfromA_actual).astype(int))
         
     def freq_to_name(self,f):
         n = self.freq_to_number(f)
         return(self.number_to_name(n))
-    def name_to_number(self,name):
-        #G4
-        basen = NOTE_NAMES.index(name[:-1])
-        n = basen + 12*(1+int(name[-1]))
+    def name_to_idealnumber(self,name):
+        #G4:5
+        name = np.char.array(name)
+        note = name.split(':')
+        basen = np.char.array([n[0] for n in note])
+        octav = np.asarray(basen.lstrip(['ABCDEFGHB#b'])).astype(int)
+        centdeviation= np.asarray([n[1] for n in note]).astype(int) # currently ignored
+        basen = np.array([NOTE_NAMES.index(n) for n in basen.rstrip([':1234567890']).tolist()])
+        n = basen + 12*(1+octav)
         return(n)
-    def name_to_freq(self,name):
-        n = self.name_to_number(name)
+    def name_to_idealfreq(self,name):
+        n = self.name_to_idealnumber(name)
         return(self.number_to_freq(n))

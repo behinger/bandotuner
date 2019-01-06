@@ -24,13 +24,43 @@ from scipy.stats import entropy
 np.random.seed(1)
 
 from bokeh.layouts import row, column,widgetbox
-from bokeh.models import ColumnDataSource, Slider, Button,LabelSet,CheckboxButtonGroup,Paragraph,DataTable, TableColumn,Span,CustomJS
+from bokeh.models import ColumnDataSource, Slider, Button,LabelSet,CheckboxButtonGroup,Paragraph,DataTable, TableColumn,Span,CustomJS,glyphs
 
 from bokeh.plotting import curdoc, figure
+
+from scipy.signal import decimate
 #from bokeh.driving import count
 
 import hz_to_scale
 import peakutils
+
+#%% Tic Toc Matlab equivalent to time things
+import time
+
+def TicTocGenerator():
+    # Generator that returns time differences
+    ti = 0           # initial time
+    tf = time.time() # final time
+    while True:
+        ti = tf
+        tf = time.time()
+        yield tf-ti # returns the time difference
+
+TicToc = TicTocGenerator() # create an instance of the TicTocGen generator
+
+# This will be the main function through which we define both tic() and toc()
+def toc(tempBool=True):
+    # Prints the time difference yielded by generator instance TicToc
+    tempTimeInterval = next(TicToc)
+    if tempBool:
+        print( "Elapsed time: %f seconds.\n" %tempTimeInterval )
+    return(tempTimeInterval)
+
+def tic():
+    # Records a time in TicToc, marks the beginning of a time interval
+    toc(False)
+
+
 
 class bokeh_tuner():
     def __init__(self,pitch=442,xrange=20):
@@ -47,6 +77,8 @@ class bokeh_tuner():
         self.init_data_sources()
         self.init_plots()
         
+        self.isupdating = False # to always only update once at a time
+        
         self.audiostreamer = audiostream.AudioStream(T=self.T)
         self.converter = hz_to_scale.hz_to_scale(pitch)
         
@@ -54,24 +86,25 @@ class bokeh_tuner():
             
         
             # The continuous signal plot (last X samples)
-            self.p_signal = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset" ,y_range=(-self.loudrange,self.loudrange))
-            self.p_signal.line(x='time', y='signal', line_width=3, color='navy', source=self.sources['signal'])
+            #self.p_signal = figure(output_backend="webgl",plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset" ,y_range=(-self.loudrange,self.loudrange))
+            #self.p_signal.line(x='time', y='signal', line_width=3, color='navy', source=self.sources['signal'])
             
             
             # main FFT figure
-            self.p_fft = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset",x_axis_type="log")
+            self.p_fft = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset",y_range=(0, 1),x_axis_type="log") # webgl does not work with log axis, also looks ugly :D
             self.p_fft.line(x='freq', y='fft', line_width=3, color='navy', source=self.sources['fft'])             # We add the fft power spectra
             #self.p_fft.circle(x='freq', y='fft', color='navy', source=self.sources['fft'])             # We add the fft power spectra
             self.p_fft.circle(x='freq',y='fft',color='red',source=self.sources['fftpeak'])# After we identified peaks (to detect the fundamental), we add the peaks in here
             
+            self.p_fft.add_glyph(self.sources['rendertime'],glyphs.Text(x=self.highpass, y=0.9, text='rendertime'))
             # This plot is a zoomed in version of the fundamental
-            self.p_fft_f1 = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset" )
+            self.p_fft_f1 = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset", y_range=(0, 1))
             #self.p_fft_f1.circle(  x='freq', y='fft', color='navy', source=self.sources['fft_f1'])
             self.p_fft_f1.line(  x='freq', y='fft', line_width=3, color='navy', source=self.sources['fft_f1'])
             self.p_fft_f1.circle(x="freq", y='fft', color='color',source=self.sources['fftpeak_f1'],size=7)
             
             # this plot is a zoomed in version of 2x the fundamental
-            self.p_fft_f2 = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset" )
+            self.p_fft_f2 = figure(plot_height=250, tools="xpan,xwheel_zoom,xbox_zoom,reset", y_range=(0, 1))
             self.p_fft_f2.line(  x='freq', y='fft', line_width=3, color='navy', source=self.sources['fft_f2'])
             #self.p_fft_f2.circle(  x='freq', y='fft', line_width=3, color='navy', source=self.sources['fft_f2'])
             self.p_fft_f2.circle(x="freq", y='fft', color='color',source=self.sources['fftpeak_f2'],size=7)
@@ -96,6 +129,8 @@ class bokeh_tuner():
         self.sources = {
                             
             'fft': ColumnDataSource(dict(freq=[], fft=[])), # was source
+            'fft_raw': dict(freq=[], fft=[]), # was source
+
             'signal': ColumnDataSource(dict(time=[],signal=[])), # was sourcesignal
             
             'fftpeak':ColumnDataSource(dict(freq=[],fft=[])) ,
@@ -104,47 +139,60 @@ class bokeh_tuner():
 
             'fftpeak_f1':ColumnDataSource(dict(freq=[],fft=[],index=[],color=[],label=[],perfectFreq=[])),
             'fftpeak_f2':ColumnDataSource(dict(freq=[],fft=[],index=[],color=[],label=[],perfectFreq=[])),
-            'savednotes':ColumnDataSource(dict(basenote=[],note=[],perfectFreq = [],freq = [],cent=[]))
+            'savednotes':ColumnDataSource(dict(basenote=[],note=[],perfectFreq = [],freq = [],cent=[])),
+            
+            'rendertime':ColumnDataSource(dict(rendertime=[0]))
                 }
-
+    def freeUpdate(self):
+        self.isupdating = False
+    def periodicUpdate(self):
+        if self.isupdating:
+            return
+        else:
+            self.isupdating = True
+            self.fft_update()
+            self.isupdating = False
     def fft_update(self):
         # get the FFT
+        #print("============ new frame =============")
+        tic()
         data = self.audiostreamer.calc_fft()
-        
+
+        #toc()
         if data is None:
             return
+        
+        data = data/np.max(data) # normalize
         freqs = (np.array(range(data.shape[0]))+1) / self.audiostreamer.T
-
+        
         ix = freqs>self.highpass
         freqs = freqs[ix]
         data  = data[ix]
-
+        
+        #tic()
         # If data remains, add it to the power spectra
         if type(data) != type(None):
+            tmp =  decimate(data,20)
+            tmp = tmp/np.max(tmp)
+            new_data_decim = dict(
+                    freq = decimate(freqs,20).tolist(),
+                    fft  =tmp.tolist()
+            )
             new_data = dict(
                     freq = freqs.tolist(),
                     fft  = data.tolist()
             )
-            self.sources['fft'].stream(new_data, data.shape[0])
-
-        signal = list(self.audiostreamer.buff[::10])
-            
-        time = list(range(len(signal)))
-        
-        new_data_signal = dict(
-                        time = time,
-                        signal= signal
-                        )
-             
-        self.sources['signal'].stream(new_data_signal,len(time))
+            self.sources['fft'].data = new_data_decim#stream(new_data, data.shape[0])
+            self.sources['fft_raw'] = new_data
         
         # if we do not want to freeze the signal, we update the small insets
         if not self.freezeInset:
             self.detect_base_freq()
-            
         if self.autoupdate:
             self.entropy_autoupdate()
             
+        self.sources['rendertime'].data = {'rendertime':[np.round(toc(False),2)]} # save but don't print
+        
     def changeT(self,attr,old,new):
             self.T = new
             self.audiostreamer.T = self.T
@@ -158,9 +206,9 @@ class bokeh_tuner():
     def detect_base_freq(self):
 
         #Detect Fundamental
-        data = pd.DataFrame(self.sources['fft'].data)
+        data = pd.DataFrame(self.sources['fft_raw'])
         ix_peak_rough = peakutils.indexes(data['fft'],min_dist=5*self.audiostreamer.T) # 5 Hz distance to other peaks
-       
+
         if len(ix_peak_rough) == 0:
             return(None,None)
         #print('detection started')
@@ -170,7 +218,7 @@ class bokeh_tuner():
         candidates = np.flip(candidates,axis=0)
         np.append(candidates,-1)
     
-        
+
         for cand in candidates:
             autopeak = data['freq'].iloc[ix_peak_rough]
             candidatevalues =np.abs(1-cand/autopeak)
@@ -183,9 +231,11 @@ class bokeh_tuner():
         new_data = dict(
                 freq = data['freq'].iloc[ix_peak_rough],
                 fft  = data['fft'].iloc[ix_peak_rough])
+
+
         self.sources['fftpeak'].stream(new_data,ix_peak_rough.shape[0])
         
-        
+
         #%% Plot zoomed in versions of fundamental + 2x fundamental
         f_f1 = cand
         f_f2 = 2*f_f1
@@ -194,12 +244,11 @@ class bokeh_tuner():
         # Get the respective data
         data_f1 = data.query("freq>%f&freq<=%f"%( f_f1 - xaxiswidth/2, f_f1 + xaxiswidth/2))
         data_f2 = data.query("freq>%f&freq<=%f"%( f_f2 - xaxiswidth/2, f_f2 + xaxiswidth/2))
-        
+
         # udate it in the plot
         self.sources['fft_f1'].stream(data_f1,data_f1.shape[0])
         self.sources['fft_f2'].stream(data_f2,data_f2.shape[0])
-        
-    
+
         # find the peaks on this subset (in order to fold the fundamental to the harmonic)
         ix_peaks_f1 = peakutils.indexes(data_f1['fft'])#,min_dist=0.5*self.audiostreamer.T) 
         ix_peaks_f2 = peakutils.indexes(data_f2['fft'])#,min_dist=0.5*self.audiostreamer.T) 
@@ -210,16 +259,18 @@ class bokeh_tuner():
         # fold up the fundamental to the harmonic 2
         if ix_peaks_f1.shape[0]>0:
             fftpeak_f2_both = pd.concat([fftpeak_f2,data_f2.iloc[ix_peaks_f1].assign(color='blue')],ignore_index=True)
-            
-        
+
+
+
         # add the labels
         
         
         if fftpeak_f1.shape[0]> 0:
-            fftpeak_f1.loc[:,'label']      =fftpeak_f1.apply(     lambda row_: self.converter.freq_to_name(row_['freq']),axis=1)
-            fftpeak_f2_both.loc[:,'label'] =fftpeak_f2_both.apply(lambda row_: self.converter.freq_to_name(row_['freq']),axis=1)
-            fftpeak_f1.loc[:,'perfectFreq']      = fftpeak_f1.apply(     lambda row_: self.converter.name_to_freq(row_['label'].partition(':')[0]),axis=1)
-            fftpeak_f2_both.loc[:,'perfectFreq'] = fftpeak_f2_both.apply(lambda row_: self.converter.name_to_freq(row_['label'].partition(':')[0]),axis=1)
+            fftpeak_f1.loc[:,'label']      =np.asarray(self.converter.freq_to_name(fftpeak_f1.freq.values))#fftpeak_f1.apply(     lambda row_: self.converter.freq_to_name(row_['freq']),axis=1)
+            fftpeak_f2_both.loc[:,'label'] =np.asarray(self.converter.freq_to_name(fftpeak_f2_both.freq.values))#fftpeak_f2_both.apply(lambda row_: self.converter.freq_to_name(row_['freq']),axis=1)
+            
+            fftpeak_f1.loc[:,'perfectFreq']      = self.converter.name_to_idealfreq(np.char.array(fftpeak_f1.label).astype('<U13'))#fftpeak_f1.apply(     lambda row_: self.converter.name_to_freq(row_['label'].partition(':')[0]),axis=1)
+            fftpeak_f2_both.loc[:,'perfectFreq'] = self.converter.name_to_idealfreq(np.char.array(fftpeak_f2_both.label).astype('<U13'))#fftpeak_f2_both.apply(lambda row_: self.converter.name_to_freq(row_['label'].partition(':')[0]),axis=1)
         else:
             fftpeak_f1.loc[:,'label'] = ''
             fftpeak_f2_both.loc[:,'label'] = ''
@@ -227,25 +278,33 @@ class bokeh_tuner():
             fftpeak_f2_both.loc[:,'perfectFreq'] = np.nan
                         
         
+
         self.sources['fftpeak_f1'].stream(fftpeak_f1,fftpeak_f1.shape[0])
         self.sources['fftpeak_f2'].stream(fftpeak_f2_both,fftpeak_f2_both.shape[0])
+   
         
         
+   
         
         
         def analyseFreq(n):
             #print(n)
-            return(pd.Series({'cent':self.converter.number_cent_difference(n['number']),
+            perfectFreq  = self.converter.name_to_idealfreq(np.char.array(self.converter.get_base(n['number']).astype('<U13'))+np.char.array(self.converter.get_octave(n['number']).values.astype('<U13'))+':0')
+            return(pd.DataFrame({'cent':self.converter.number_cent_difference(n['number']),
                               'freq':n['freq'],
-                              'note':self.converter.get_base(n['number'])+str(self.converter.get_octave(n['number'])),
-							  'perfectFreq':np.round(self.converter.name_to_freq(self.converter.get_base(n['number'])+str(self.converter.get_octave(n['number']))),2)})
+                              'note':np.char.array(self.converter.get_base(n['number']))+np.char.array(str(self.converter.get_octave(n['number']))),
+							  'perfectFreq':np.round(perfectFreq,2)})
             )
             
-        fftpeak_f1['number'] =fftpeak_f1.apply(lambda x:self.converter.freq_to_number(x['freq']),axis=1)
-        fftpeak_f2['number'] =fftpeak_f2.apply(lambda x:self.converter.freq_to_number(x['freq']),axis=1)
+        fftpeak_f1['number'] =self.converter.freq_to_number(fftpeak_f1.freq)#fftpeak_f1.apply(lambda x:self.converter.freq_to_number(x['freq']),axis=1)
+        fftpeak_f2['number'] =self.converter.freq_to_number(fftpeak_f2.freq)#fftpeak_f2.apply(lambda x:self.converter.freq_to_number(x['freq']),axis=1)
         
-        f1_analysed          =fftpeak_f1.apply(lambda n: analyseFreq(n),axis=1)
-        f2_analysed          =fftpeak_f2.apply(lambda n: analyseFreq(n),axis=1) 
+        f1_analysed          =analyseFreq(fftpeak_f1)
+        f2_analysed          =analyseFreq(fftpeak_f2)
+                
+                
+        #fftpeak_f1.apply(lambda n: analyseFreq(n),axis=1)
+        #f2_analysed          =#fftpeak_f2.apply(lambda n: analyseFreq(n),axis=1) 
         
         
         return(f1_analysed,f2_analysed)
@@ -254,7 +313,7 @@ class bokeh_tuner():
         self.converter.concertpitch=new    
     
     def entropy_autoupdate(self):
-        data = pd.DataFrame(self.sources['fft'].data)
+        data = pd.DataFrame(self.sources['fft_raw'])
         ent = entropy(data['fft'])
         if ent < self.entropythreshold:
             self.analyse_and_save()
@@ -373,6 +432,7 @@ curdoc().add_root(row([column([bt.p_fft,bt.p_fft_f1,bt.p_fft_f2]),
                   column([widgets,bt.p_saved])]))
 
 # update every 100ms
-curdoc().add_periodic_callback(bt.fft_update, 100)
+curdoc().add_periodic_callback(bt.periodicUpdate, 10)
+curdoc().add_periodic_callback(bt.freeUpdate, 2000) # every 2s free the update just in case
 
 curdoc().title = "Bandoneon Tuner"
